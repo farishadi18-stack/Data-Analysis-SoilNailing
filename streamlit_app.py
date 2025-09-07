@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -24,32 +23,46 @@ nail_inclination = st.number_input("Inclination (°)", min_value=0.0, max_value=
 slope_angle = st.number_input("Slope Angle (°)", min_value=15.0, max_value=90.0, step=1.0)
 
 # ----------------------------
-# Load Dataset
+# Caching functions
 # ----------------------------
-df = pd.read_csv("new treated slope.csv")
 
-X = df[["Cohesion", "Friction_Angle", "Nail_Length",
-        "Drillhole_Diameter", "Nail_Inclination", "Slope_Angle"]]
-y = df["Factor_of_Safety"]
+@st.cache_data
+def load_data():
+    df = pd.read_csv("new treated slope.csv")
+    return df
+
+@st.cache_data
+def preprocess_data(df):
+    X = df[["Cohesion", "Friction_Angle", "Nail_Length",
+            "Drillhole_Diameter", "Nail_Inclination", "Slope_Angle"]]
+    y = df["Factor_of_Safety"]
+
+    # Train/test split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+
+    # Apply SMOGN (expensive step → cache once)
+    train_df = pd.concat([X_train, y_train], axis=1)
+    train_bal = smogn.smoter(data=train_df, y="Factor_of_Safety")
+
+    X_train_bal = train_bal[X.columns]
+    y_train_bal = train_bal["Factor_of_Safety"]
+
+    return X_train_bal, y_train_bal
+
+@st.cache_resource
+def train_model(X_train, y_train):
+    model = RandomForestRegressor(n_estimators=200, random_state=42)
+    model.fit(X_train, y_train)
+    return model
 
 # ----------------------------
-# Train Model
+# Pipeline
 # ----------------------------
-# Split 80/20
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
-)
-
-# Apply SMOGN
-train_df = pd.concat([X_train, y_train], axis=1)
-train_bal = smogn.smoter(data=train_df, y="Factor_of_Safety")
-
-X_train_bal = train_bal[X.columns]
-y_train_bal = train_bal["Factor_of_Safety"]
-
-# Train final model
-model = RandomForestRegressor(n_estimators=200, random_state=42)
-model.fit(X_train_bal, y_train_bal)
+df = load_data()
+X_train_bal, y_train_bal = preprocess_data(df)
+model = train_model(X_train_bal, y_train_bal)
 
 # ----------------------------
 # Prediction
