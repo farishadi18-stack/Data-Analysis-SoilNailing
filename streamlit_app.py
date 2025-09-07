@@ -1,7 +1,7 @@
+# app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
-
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 import smogn
@@ -23,26 +23,25 @@ nail_inclination = st.number_input("Inclination (°)", min_value=0.0, max_value=
 slope_angle = st.number_input("Slope Angle (°)", min_value=15.0, max_value=90.0, step=1.0)
 
 # ----------------------------
-# Caching functions
+# Cached Functions
 # ----------------------------
-
 @st.cache_data
 def load_data():
-    df = pd.read_csv("new treated slope.csv")
-    return df
+    """Load dataset once and cache it."""
+    return pd.read_csv("new treated slope.csv")
 
 @st.cache_data
 def preprocess_data(df):
+    """Split and balance dataset once (SMOGN step)."""
     X = df[["Cohesion", "Friction_Angle", "Nail_Length",
             "Drillhole_Diameter", "Nail_Inclination", "Slope_Angle"]]
     y = df["Factor_of_Safety"]
 
-    # Train/test split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
 
-    # Apply SMOGN (expensive step → cache once)
+    # Apply SMOGN balancing (expensive step)
     train_df = pd.concat([X_train, y_train], axis=1)
     train_bal = smogn.smoter(data=train_df, y="Factor_of_Safety")
 
@@ -53,7 +52,8 @@ def preprocess_data(df):
 
 @st.cache_resource
 def train_model(X_train, y_train):
-    model = RandomForestRegressor(n_estimators=200, random_state=42)
+    """Train RandomForest once and cache it."""
+    model = RandomForestRegressor(n_estimators=200, random_state=42, n_jobs=-1)
     model.fit(X_train, y_train)
     return model
 
