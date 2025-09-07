@@ -5,7 +5,6 @@ import numpy as np
 
 from sklearn.model_selection import train_test_split, KFold, cross_val_score
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import r2_score
 import smogn
 
 # ----------------------------
@@ -29,55 +28,52 @@ slope_angle = st.number_input("Slope Angle (°)", min_value=15.0, max_value=90.0
 # ----------------------------
 try:
     df = pd.read_csv("new treated slope.csv")
-except:
-    st.error("❌ Dataset not found. Please upload 'new treated slope.csv' to your repo.")
-    st.stop()
+    st.success("✅ Dataset loaded successfully!")
+    st.write("Preview:", df.head())
+    st.write("Columns detected:", df.columns.tolist())
+except Exception as e:
+    st.error(f"❌ Dataset not found or could not be read. Error: {e}")
+    df = None
 
 # ----------------------------
-# Features and Target
+# Train Model (if dataset available)
 # ----------------------------
-X = df[["Cohesion", "Friction_Angle", "Nail_Length",
-        "Drillhole_Diameter", "Nail_Inclination", "Slope_Angle"]]
-y = df["Factor_of_Safety"]
+model = None
+if df is not None:
+    try:
+        X = df[["Cohesion", "Friction_Angle", "Nail_Length",
+                "Drillhole_Diameter", "Nail_Inclination", "Slope_Angle"]]
+        y = df["Factor_of_Safety"]
+
+        # Split 80/20
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42
+        )
+
+        # Apply SMOGN
+        train_df = pd.concat([X_train, y_train], axis=1)
+        train_bal = smogn.smoter(data=train_df, y="Factor_of_Safety")
+
+        X_train_bal = train_bal[X.columns]
+        y_train_bal = train_bal["Factor_of_Safety"]
+
+        # Train final model
+        model = RandomForestRegressor(n_estimators=200, random_state=42)
+        model.fit(X_train_bal, y_train_bal)
+
+        st.info("✅ Model trained successfully!")
+
+    except Exception as e:
+        st.error(f"⚠️ Training failed. Please check your dataset columns. Error: {e}")
+        model = None
 
 # ----------------------------
-# Split Data 80/20
-# ----------------------------
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
-)
-
-# ----------------------------
-# Apply SMOGN to Training Data
-# ----------------------------
-train_df = pd.concat([X_train, y_train], axis=1)
-train_bal = smogn.smoter(
-    data=train_df,
-    y="Factor_of_Safety"
-)
-
-X_train_bal = train_bal[X.columns]
-y_train_bal = train_bal["Factor_of_Safety"]
-
-# ----------------------------
-# K-Fold Cross Validation
-# ----------------------------
-model = RandomForestRegressor(n_estimators=200, random_state=42)
-kf = KFold(n_splits=10, shuffle=True, random_state=42)
-
-cv_scores = cross_val_score(model, X_train_bal, y_train_bal, cv=kf, scoring="r2")
-
-st.write(f"📊 10-Fold CV Mean R²: {cv_scores.mean():.3f} ± {cv_scores.std():.3f}")
-
-# ----------------------------
-# Train Final Model (on balanced data)
-# ----------------------------
-model.fit(X_train_bal, y_train_bal)
-
-# ----------------------------
-# Prediction
+# Prediction Section
 # ----------------------------
 if st.button("🔮 Predict FoS"):
-    input_data = np.array([[c, phi, nail_length, nail_diameter, nail_inclination, slope_angle]])
-    fos_pred = model.predict(input_data)[0]
-    st.success(f"Predicted Factor of Safety (FoS): {fos_pred:.3f}")
+    if model is not None:
+        input_data = np.array([[c, phi, nail_length, nail_diameter, nail_inclination, slope_angle]])
+        fos_pred = model.predict(input_data)[0]
+        st.success(f"Predicted Factor of Safety (FoS): {fos_pred:.3f}")
+    else:
+        st.warning("⚠️ Model is not available. Please check dataset and retrain.")
