@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-from sklearn.model_selection import train_test_split, KFold, cross_val_score
+from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 import smogn
 
@@ -26,54 +26,35 @@ slope_angle = st.number_input("Slope Angle (°)", min_value=15.0, max_value=90.0
 # ----------------------------
 # Load Dataset
 # ----------------------------
-try:
-    df = pd.read_csv("new treated slope.csv")
-    st.success("✅ Dataset loaded successfully!")
-    st.write("Preview:", df.head())
-    st.write("Columns detected:", df.columns.tolist())
-except Exception as e:
-    st.error(f"❌ Dataset not found or could not be read. Error: {e}")
-    df = None
+df = pd.read_csv("new treated slope.csv")
+
+X = df[["Cohesion", "Friction_Angle", "Nail_Length",
+        "Drillhole_Diameter", "Nail_Inclination", "Slope_Angle"]]
+y = df["Factor_of_Safety"]
 
 # ----------------------------
-# Train Model (if dataset available)
+# Train Model
 # ----------------------------
-model = None
-if df is not None:
-    try:
-        X = df[["Cohesion", "Friction_Angle", "Nail_Length",
-                "Drillhole_Diameter", "Nail_Inclination", "Slope_Angle"]]
-        y = df["Factor_of_Safety"]
+# Split 80/20
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
 
-        # Split 80/20
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
+# Apply SMOGN
+train_df = pd.concat([X_train, y_train], axis=1)
+train_bal = smogn.smoter(data=train_df, y="Factor_of_Safety")
 
-        # Apply SMOGN
-        train_df = pd.concat([X_train, y_train], axis=1)
-        train_bal = smogn.smoter(data=train_df, y="Factor_of_Safety")
+X_train_bal = train_bal[X.columns]
+y_train_bal = train_bal["Factor_of_Safety"]
 
-        X_train_bal = train_bal[X.columns]
-        y_train_bal = train_bal["Factor_of_Safety"]
-
-        # Train final model
-        model = RandomForestRegressor(n_estimators=200, random_state=42)
-        model.fit(X_train_bal, y_train_bal)
-
-        st.info("✅ Model trained successfully!")
-
-    except Exception as e:
-        st.error(f"⚠️ Training failed. Please check your dataset columns. Error: {e}")
-        model = None
+# Train final model
+model = RandomForestRegressor(n_estimators=200, random_state=42)
+model.fit(X_train_bal, y_train_bal)
 
 # ----------------------------
-# Prediction Section
+# Prediction
 # ----------------------------
 if st.button("🔮 Predict FoS"):
-    if model is not None:
-        input_data = np.array([[c, phi, nail_length, nail_diameter, nail_inclination, slope_angle]])
-        fos_pred = model.predict(input_data)[0]
-        st.success(f"Predicted Factor of Safety (FoS): {fos_pred:.3f}")
-    else:
-        st.warning("⚠️ Model is not available. Please check dataset and retrain.")
+    input_data = np.array([[c, phi, nail_length, nail_diameter, nail_inclination, slope_angle]])
+    fos_pred = model.predict(input_data)[0]
+    st.success(f"Predicted Factor of Safety (FoS): {fos_pred:.3f}")
